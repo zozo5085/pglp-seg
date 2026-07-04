@@ -102,15 +102,7 @@ def _resolve_json_path(json_file_path: str) -> str:
 
 
 def _load_pseudo_classes(json_file_path: str):
-    """
-    支援兩種格式：
-    1) JSON Lines:
-       [1, 3]
-       [5]
-       []
-    2) 完整 JSON:
-       [[1, 3], [5], []]
-    """
+ 
     json_file_path = _resolve_json_path(json_file_path)
 
     if not os.path.isfile(json_file_path):
@@ -124,11 +116,10 @@ def _load_pseudo_classes(json_file_path: str):
     if not raw:
         return pseudo_classes
 
-    # 先嘗試整份 JSON 載入
     try:
         data = json.loads(raw)
         if isinstance(data, list):
-            # case A: 整份就是 [[...], [...]]
+
             if len(data) == 0:
                 return []
             if all(isinstance(x, list) or x is None or isinstance(x, (int, float)) for x in data):
