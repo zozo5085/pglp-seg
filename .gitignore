@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Experiments / checkpoints
+experiments/
+runs/
+outputs/
+logs/
+weights/
+pretrain/
+figures/
+vis/
+*.pth
+*.pt
+!utils/cls_token.pt
+*.ckpt
+*.onnx
+
+# Generated pseudo labels
+text/*pseudo*.json
+text/*pseudo_label*.json
+
+# Dataset / local paths
+datasets/
+data/
+
+# IDE / OS
+.vscode/
+.idea/
+.agents/
+.codex-plugins/
+.DS_Store
+Thumbs.db

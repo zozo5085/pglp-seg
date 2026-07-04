@@ -1,5 +1,5 @@
-# Clean ReCLIP++ baseline model.py.
-# Manual-final defaults: PG-CP-SFP + SP-DTLR + Attribute residual v2 conflict-only.
+# PGLP-Seg model.
+# Internal legacy prefixes are kept where checkpoint compatibility needs them.
 
 from collections import OrderedDict
 import torch
@@ -133,7 +133,7 @@ class ResidualAttentionBlock(nn.Module):
         )
 
         # attn_weight: [B, L, L]
-        # Save for SFP-lite outlier detection.
+        # Save for unreliable-region detection.
         self.last_attn_weight = attn_weight.detach()
 
         x = x + attn_out
@@ -168,7 +168,7 @@ class LastResidualAttentionBlock(nn.Module):
         self.ln_2 = nn.LayerNorm(d_model)
         self.attn_mask = attn_mask
 
-        # LRAB conservative setting.
+        # Conservative final-block mixing setting.
         # Keep this small if you want to preserve the author's PD=1.0 behavior.
         self.lrab_alpha = 0.02 #0.05 >> 0.02
         self.lrab_lambda_out = 1.0
@@ -181,16 +181,16 @@ class LastResidualAttentionBlock(nn.Module):
 
     def forward(self, x: torch.Tensor):
         # ------------------------------------------------------------
-        # LRAB Conservative v4
+        # Conservative final-block mixing.
         #
         # Goal:
-        #   Preserve the original ReCLIP++ / CLIP final-block behavior
+        #   Preserve the frozen CLIP final-block behavior
         #   as much as possible, while injecting a very small rectified
         #   dense value branch.
         #
         # Important:
         #   x_ori is kept as the original OpenAI global branch.
-        #   v_ori is kept as the original ReCLIP++ dense value branch.
+        #   v_ori is kept as the dense value branch.
         #   v_rect is the proposed rectified dense branch.
         #   final v = (1-alpha) * v_ori + alpha * v_rect.
         # ------------------------------------------------------------
@@ -206,8 +206,7 @@ class LastResidualAttentionBlock(nn.Module):
         q_raw, k_raw, v_raw = qkv[0], qkv[1], qkv[2]
 
         # ------------------------------------------------------------
-        # Original ReCLIP++ dense branch.
-        # This follows the author implementation:
+        # Dense value branch:
         #   split q/k/v after applying out_proj to each projected branch.
         # ------------------------------------------------------------
         # qkv_out = qkv.reshape(3 * N, L, C)
@@ -282,8 +281,7 @@ class Transformer(nn.Module):
     def forward(self, x: torch.Tensor):
         z, q, k, v = self.resblocks(x)
 
-        # Use the penultimate block attention for SFP-lite.
-        # This is closer to SFP's idea than using only the final block.
+        # Use the penultimate block attention for unreliable-region scoring.
         sfp_attn = getattr(self.resblock[-2], "last_attn_weight", None)
 
         return z, q, k, v, sfp_attn
@@ -320,7 +318,7 @@ class VisionTransformer(nn.Module):
 
     def compute_sfp_score(self, attn_weight, output_h, output_w):
         """
-        SFP-lite SOM score.
+        Unreliable-region score.
 
         attn_weight:
             [B, L, L] or [B, heads, L, L]
@@ -328,7 +326,7 @@ class VisionTransformer(nn.Module):
         score:
             [B, H, W]
 
-        SFP idea:
+        Selection idea:
             outlier if Attn_cls,i > Attn_i,i
         """
         if attn_weight is None:
@@ -441,8 +439,7 @@ class TextEncoder(nn.Module):
         self.dtype = torch.float32
         self.device = device
         # ------------------------------------------------------------
-        # CP-SFP-lite setting.
-        # Calibration-preserved SFP-style feature purification.
+        # Calibration-preserved proxy-guided logit purification.
         # ------------------------------------------------------------
 
         token = torch.zeros((1, 73), dtype=torch.int).to(self.device)
@@ -482,7 +479,7 @@ class DomainTransformRecursiveFilter(nn.Module):
     Domain-transform recursive edge-preserving filter.
 
     This module is parameter-free. In this file it is only used at test time
-    through SFP-selected logit refinement, so it does not change the training
+    through selected-region logit refinement, so it does not change the training
     checkpoint format.
     """
     def __init__(self, sigma_s=30.0, sigma_r=0.30, num_iterations=1):
@@ -583,9 +580,9 @@ class DomainTransformRecursiveFilter(nn.Module):
         return out
 
 
-class RECLIPPP(nn.Module):
+class PGLP_Seg(nn.Module):
     def __init__(self, cfg, clip_model, rank, zeroshot_weights=None):
-        super(RECLIPPP, self).__init__()
+        super(PGLP_Seg, self).__init__()
         self.vit = VisionTransformer(clip_model=clip_model,
                                      input_resolution=224,
                                      patch_size=16,
@@ -600,6 +597,7 @@ class RECLIPPP(nn.Module):
         text_channel = cfg.MODEL.TEXT_CHANNEL
         self.proj = nn.Conv2d(visual_channel, text_channel, 1, bias=False)
         self._initialize_weights(clip_model)
+
         self.logit_scale = clip_model.logit_scale
         for p in self.parameters():
             p.requires_grad = False
@@ -612,7 +610,7 @@ class RECLIPPP(nn.Module):
         self.focal_gamma = 2.0
         self.focal_alpha = None
 
-        # CP-SFP / PG-CP-SFP / SFP-FBLS settings.
+        # Proxy-guided logit purification settings.
         # Defaults below are for inference-time ablation.
         # For clean training, set all three enables to False.
         self.sfp_enable = True
@@ -622,8 +620,8 @@ class RECLIPPP(nn.Module):
         self.sfp_conf_thd = 0.97
         self.sfp_conf_scale = 10.0
 
-        # Margin-aware SFP selection.
-        # When enabled, SFP ranking is augmented by class ambiguity:
+        # Margin-aware unreliable-region selection.
+        # When enabled, region ranking is augmented by class ambiguity:
         #   rank_score = normalized_sfp_score + lambda * (1 - top1_top2_margin)
         # It changes only which tokens are selected; PG / DTLR refinement remains unchanged.
         self.sfp_margin_enable = False
@@ -639,17 +637,17 @@ class RECLIPPP(nn.Module):
 
         # Debug / visualization export.
         # Set self.sfp_debug_export=True during inference to keep lightweight
-        # CPU copies of SFP / DTLR / attribute maps for selected images.
+        # CPU copies of URD / DTLR / attribute maps for selected images.
         self.sfp_debug_export = False
         self.sfp_debug_maps = {}
 
-        # Proxy-Guided CP-SFP.
+        # Proxy-guided local refinement.
         self.sfp_proxy_enable = True
         self.sfp_proxy_lambda = 2.00
         self.sfp_proxy_conf_thd = 0.95
         self.sfp_proxy_kernel = 5
 
-        # SFP-selected Fast Bilateral Logit Solver.
+        # Selected-region fast bilateral logit solver.
         self.sfp_fbls_enable = False
         self.sfp_fbls_kernel = 5
         self.sfp_fbls_beta = 0.20
@@ -658,7 +656,7 @@ class RECLIPPP(nn.Module):
         self.sfp_fbls_sigma_spatial = 2.0
         self.sfp_fbls_eps = 1e-6
 
-        # SFP-selected Domain-Transform Logit Refinement.
+        # Selected-region domain-transform logit refinement.
         # Keep disabled by default for PG baseline sanity check.
         self.sfp_dtlr_enable = True
         self.sfp_dtlr_beta = 1.20
@@ -794,13 +792,13 @@ class RECLIPPP(nn.Module):
 
     def sfp_logit_purify(self, output, sfp_score):
         """
-        CP-SFP / PG-CP-SFP logit purification.
+        Proxy-guided logit purification.
 
         output:    [B, C, H, W]
         sfp_score: [B, Hs, Ws]
 
-        The selected SFP outlier mask is cached in self.sfp_last_outlier_mask
-        for later SFP-FBLS refinement.
+        The selected unreliable-region mask is cached in self.sfp_last_outlier_mask
+        for later local refinement.
         """
         self.sfp_last_outlier_mask = None
         self.sfp_last_stats_batch = []
@@ -833,7 +831,7 @@ class RECLIPPP(nn.Module):
             flat_conf = conf.reshape(B, -1)
             flat_margin = margin.reshape(B, -1)
 
-            # Original valid region: SFP-valid and low-confidence.
+            # Original valid region: score-valid and low-confidence.
             # Margin-aware mode only changes ranking by default.
             # Optional hard margin gate can be enabled for stricter ambiguity filtering.
             outlier_flat = torch.zeros_like(flat_score, dtype=torch.bool)
@@ -844,13 +842,13 @@ class RECLIPPP(nn.Module):
             margin_thd = float(getattr(self, "sfp_margin_thd", 0.20))
 
             if margin_enable:
-                # Normalize SFP score per image so that lambda has a stable meaning.
+                # Normalize region score per image so that lambda has a stable meaning.
                 score_min = flat_score.amin(dim=1, keepdim=True)
                 score_max = flat_score.amax(dim=1, keepdim=True)
                 flat_score_rank = (flat_score - score_min) / (score_max - score_min).clamp_min(1e-6)
 
                 # Higher means more suspicious:
-                #   high SFP score + small semantic margin.
+                #   high region score + small semantic margin.
                 rank_score = flat_score_rank + margin_lambda * (1.0 - flat_margin)
             else:
                 rank_score = flat_score
@@ -887,7 +885,7 @@ class RECLIPPP(nn.Module):
         if update_mask.sum() < 1:
             return output
 
-        # 8-neighbor CP-SFP target.
+        # 8-neighbor local proxy target.
         kernel = torch.ones((1, 1, 3, 3), device=device, dtype=dtype)
         kernel[:, :, 1, 1] = 0.0
 
@@ -903,7 +901,7 @@ class RECLIPPP(nn.Module):
         refined_target = neigh_mean
         proxy_available = torch.zeros((B, 1, H, W), device=device, dtype=dtype)
 
-        # Optional PG-CP-SFP local high-confidence proxy.
+        # Optional local high-confidence proxy.
         if getattr(self, "sfp_proxy_enable", False):
             proxy_kernel_size = int(getattr(self, "sfp_proxy_kernel", 5))
             if proxy_kernel_size not in (3, 5):
@@ -996,11 +994,11 @@ class RECLIPPP(nn.Module):
 
     def sfp_domain_transform_logit_refine(self, output, image):
         """
-        SFP-selected Domain-Transform Logit Refinement.
+        Selected-region domain-transform logit refinement.
 
         The domain-transform filter is computed on the current logits, but only
-        SFP-selected unreliable tokens are updated. High-confidence tokens are
-        preserved because the update mask is exactly the cached SFP outlier mask.
+        Selected unreliable tokens are updated. High-confidence tokens are
+        preserved because the update mask is exactly the cached unreliable mask.
         """
         if not getattr(self, "sfp_dtlr_enable", False):
             return output
@@ -1106,7 +1104,7 @@ class RECLIPPP(nn.Module):
             self.sfp_debug_maps["pred_before_dtlr"] = output.argmax(dim=1).detach().cpu()
             self.sfp_debug_maps["pred_after_dtlr"] = output_new.argmax(dim=1).detach().cpu()
 
-        # Append DTLR protection statistics to existing SFP CSV rows.
+        # Append DTLR protection statistics to existing diagnostic CSV rows.
         with torch.no_grad():
             selected_count = selected.sum(dim=(1, 2, 3)).clamp_min(1.0)
             updated_count = update_mask.sum(dim=(1, 2, 3))
@@ -1138,9 +1136,9 @@ class RECLIPPP(nn.Module):
 
     def sfp_fast_bilateral_logit_solver(self, output, image):
         """
-        SFP-selected Fast Bilateral Logit Solver (local PyTorch approximation).
+        Selected-region fast bilateral logit solver (local PyTorch approximation).
 
-        Only SFP-selected uncertain tokens are refined. Nearby high-confidence
+        Only selected uncertain tokens are refined. Nearby high-confidence
         logits are used as anchors, and RGB bilateral affinity suppresses
         propagation across image boundaries.
         """
@@ -1254,7 +1252,7 @@ class RECLIPPP(nn.Module):
         Encode attribute prompts with the frozen CLIP text encoder.
 
         Important:
-        We do NOT call self.clip.encode_text() here because some ReCLIP++
+        We do NOT call self.clip.encode_text() here because some CLIP wrappers
         checkpoints keep the CLIP text transformer in fp32 while
         text_projection is fp16. OpenAI CLIP's encode_text directly performs
         x @ text_projection and can then raise:
@@ -1366,12 +1364,12 @@ class RECLIPPP(nn.Module):
         Attribute-guided residual correction.
 
         v1 behavior:
-            update SFP-selected tokens whose current prediction is in
+            update selected tokens whose current prediction is in
             sfp_attr_apply_classes.
 
         v2 conflict-only behavior:
             if sfp_attr_conflict_only=True and both DTLR-side logits are given,
-            update only SFP-selected tokens whose class changes from
+            update only selected tokens whose class changes from
             output_before_dtlr to output_after_dtlr.
 
         output_new = output + eta * update_mask * attr_logits
@@ -1769,3 +1767,4 @@ class RECLIPPP(nn.Module):
     def _initialize_weights(self, clip_model):
         self.proj.weight = nn.Parameter(clip_model.visual.proj[:, :, None, None].permute(1, 0, 2, 3).to(torch.float32),
                                         requires_grad=False)
+

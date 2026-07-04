@@ -1,0 +1,9 @@
+ftfy
+regex
+tqdm
+opencv-python
+easydict
+numpy
+Pillow
+matplotlib
+git+https://github.com/openai/CLIP.git
