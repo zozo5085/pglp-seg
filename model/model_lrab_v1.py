@@ -1,6 +1,3 @@
-# PGLP-Seg model.
-# Internal legacy prefixes are kept where checkpoint compatibility needs them.
-
 from collections import OrderedDict
 import torch
 from torch import nn
@@ -13,11 +10,6 @@ import os
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 def focal_loss_multiclass(logits, targets, gamma=2.0, alpha=None, reduction="mean"):
-    """
-    Multi-class focal loss.
-    logits:  [N, C]
-    targets: [N]
-    """
     ce = F.cross_entropy(logits, targets, reduction="none")
     pt = torch.exp(-ce)
 
@@ -132,8 +124,6 @@ class ResidualAttentionBlock(nn.Module):
             average_attn_weights=True
         )
 
-        # attn_weight: [B, L, L]
-        # Save for unreliable-region detection.
         self.last_attn_weight = attn_weight.detach()
 
         x = x + attn_out
@@ -167,9 +157,6 @@ class LastResidualAttentionBlock(nn.Module):
         ]))
         self.ln_2 = nn.LayerNorm(d_model)
         self.attn_mask = attn_mask
-
-        # Conservative final-block mixing setting.
-        # Keep this small if you want to preserve the author's PD=1.0 behavior.
         self.lrab_alpha = 0.02 #0.05 >> 0.02
         self.lrab_lambda_out = 1.0
 
@@ -180,20 +167,6 @@ class LastResidualAttentionBlock(nn.Module):
         return self.attn(x, x, x, need_weights=False, attn_mask=self.attn_mask)[0]
 
     def forward(self, x: torch.Tensor):
-        # ------------------------------------------------------------
-        # Conservative final-block mixing.
-        #
-        # Goal:
-        #   Preserve the frozen CLIP final-block behavior
-        #   as much as possible, while injecting a very small rectified
-        #   dense value branch.
-        #
-        # Important:
-        #   x_ori is kept as the original OpenAI global branch.
-        #   v_ori is kept as the dense value branch.
-        #   v_rect is the proposed rectified dense branch.
-        #   final v = (1-alpha) * v_ori + alpha * v_rect.
-        # ------------------------------------------------------------
         y = self.ln_1(x)
 
         # Raw CLIP QKV before out_proj: [N, L, 3*C]
@@ -205,10 +178,6 @@ class LastResidualAttentionBlock(nn.Module):
         qkv = qkv.view(N, L, 3, C).permute(2, 0, 1, 3)
         q_raw, k_raw, v_raw = qkv[0], qkv[1], qkv[2]
 
-        # ------------------------------------------------------------
-        # Dense value branch:
-        #   split q/k/v after applying out_proj to each projected branch.
-        # ------------------------------------------------------------
         # qkv_out = qkv.reshape(3 * N, L, C)
         qkv_out = qkv.contiguous().reshape(3 * N, L, C)
         qkv_out = F.linear(qkv_out, self.attn.out_proj.weight, self.attn.out_proj.bias)
@@ -217,21 +186,9 @@ class LastResidualAttentionBlock(nn.Module):
         v_ori = v_ori + x
         v_ori = v_ori + self.mlp(self.ln_2(v_ori))
 
-        # Original OpenAI CLIP final block output for CLS/global behavior.
         x_ori = x + self.attention(y)
         x_ori = x_ori + self.mlp(self.ln_2(x_ori))
 
-        # ------------------------------------------------------------
-        # Rectified dense branch.
-        # Softly suppress below-row-mean attention scores before aggregating V.
-        # This branch is mixed into v_ori with a small alpha.
-        # ------------------------------------------------------------
-        # ------------------------------------------------------------
-        # Self-Self Attention dense branch.
-        # ITACLIP-style:
-        #   Attn(X) = softmax(QK^T / sqrt(d))
-        #   SA(X)   = Attn(X) V W_o
-        # ------------------------------------------------------------
         d_k = q_raw.size(-1)
         scores = torch.matmul(q_raw, k_raw.transpose(-2, -1)) / math.sqrt(d_k)
         attn_weights = F.softmax(scores, dim=-1)
@@ -281,7 +238,6 @@ class Transformer(nn.Module):
     def forward(self, x: torch.Tensor):
         z, q, k, v = self.resblocks(x)
 
-        # Use the penultimate block attention for unreliable-region scoring.
         sfp_attn = getattr(self.resblock[-2], "last_attn_weight", None)
 
         return z, q, k, v, sfp_attn
@@ -317,18 +273,6 @@ class VisionTransformer(nn.Module):
         self._initialize_weights(clip_model)
 
     def compute_sfp_score(self, attn_weight, output_h, output_w):
-        """
-        Unreliable-region score.
-
-        attn_weight:
-            [B, L, L] or [B, heads, L, L]
-
-        score:
-            [B, H, W]
-
-        Selection idea:
-            outlier if Attn_cls,i > Attn_i,i
-        """
         if attn_weight is None:
             return None
 
@@ -350,7 +294,7 @@ class VisionTransformer(nn.Module):
 
     def forward(self, x, train=False, img_metas=None):
         B = x.shape[0]
-        # PatchEmbed
+        # PatchEmbedding
         # Padding
         input_h, input_w = x.size()[-2:]
         kernel_h, kernel_w = (self.patch_size, self.patch_size)
@@ -438,10 +382,7 @@ class TextEncoder(nn.Module):
         self.text_projection = clip_model.text_projection.to(torch.float32)
         self.dtype = torch.float32
         self.device = device
-        # ------------------------------------------------------------
-        # Calibration-preserved proxy-guided logit purification.
-        # ------------------------------------------------------------
-
+        
         token = torch.zeros((1, 73), dtype=torch.int).to(self.device)
         prompt_token = self.token_embedding(token)
         for p in self.parameters():
@@ -475,13 +416,6 @@ class TextEncoder(nn.Module):
 
 
 class DomainTransformRecursiveFilter(nn.Module):
-    """
-    Domain-transform recursive edge-preserving filter.
-
-    This module is parameter-free. In this file it is only used at test time
-    through selected-region logit refinement, so it does not change the training
-    checkpoint format.
-    """
     def __init__(self, sigma_s=30.0, sigma_r=0.30, num_iterations=1):
         super().__init__()
         self.sigma_s = float(sigma_s)
@@ -489,14 +423,6 @@ class DomainTransformRecursiveFilter(nn.Module):
         self.num_iterations = int(num_iterations)
 
     def forward(self, img, joint_image):
-        """
-        img:
-            [B, C, H, W], logits or probability maps to be filtered.
-
-        joint_image:
-            [B, 3, Hin, Win], RGB guide image. It is resized to the logit
-            resolution and normalized to [0, 1] per image.
-        """
         B, C, H, W = img.shape
         device = img.device
         dtype = img.dtype
@@ -610,20 +536,13 @@ class PGLP_Seg(nn.Module):
         self.focal_gamma = 2.0
         self.focal_alpha = None
 
-        # Proxy-guided logit purification settings.
-        # Defaults below are for inference-time ablation.
-        # For clean training, set all three enables to False.
         self.sfp_enable = True
         self.sfp_topk = 800
         self.sfp_min_score = -1e9
         self.sfp_logit_beta = 0.55
         self.sfp_conf_thd = 0.97
         self.sfp_conf_scale = 10.0
-
-        # Margin-aware unreliable-region selection.
-        # When enabled, region ranking is augmented by class ambiguity:
-        #   rank_score = normalized_sfp_score + lambda * (1 - top1_top2_margin)
-        # It changes only which tokens are selected; PG / DTLR refinement remains unchanged.
+        
         self.sfp_margin_enable = False
         self.sfp_margin_lambda = 0.30
         self.sfp_margin_hard_enable = False
@@ -635,19 +554,14 @@ class PGLP_Seg(nn.Module):
         self.sfp_last_stats_batch = []
         self.sfp_last_outlier_mask = None
 
-        # Debug / visualization export.
-        # Set self.sfp_debug_export=True during inference to keep lightweight
-        # CPU copies of URD / DTLR / attribute maps for selected images.
         self.sfp_debug_export = False
         self.sfp_debug_maps = {}
 
-        # Proxy-guided local refinement.
         self.sfp_proxy_enable = True
         self.sfp_proxy_lambda = 2.00
         self.sfp_proxy_conf_thd = 0.95
         self.sfp_proxy_kernel = 5
 
-        # Selected-region fast bilateral logit solver.
         self.sfp_fbls_enable = False
         self.sfp_fbls_kernel = 5
         self.sfp_fbls_beta = 0.20
@@ -656,8 +570,6 @@ class PGLP_Seg(nn.Module):
         self.sfp_fbls_sigma_spatial = 2.0
         self.sfp_fbls_eps = 1e-6
 
-        # Selected-region domain-transform logit refinement.
-        # Keep disabled by default for PG baseline sanity check.
         self.sfp_dtlr_enable = True
         self.sfp_dtlr_beta = 1.20
         self.sfp_dtlr_sigma_s = 70.0
@@ -665,36 +577,15 @@ class PGLP_Seg(nn.Module):
         self.sfp_dtlr_num_iter = 1
         self.sfp_dtlr_boundary_only = False
 
-        # Structure-preserving DTLR protection.
-        # VOC zero-based class order used by this repo:
-        # 0 aeroplane, 1 bicycle, 2 bird, 3 boat, 4 bottle, 5 bus,
-        # 6 car, 7 cat, 8 chair, 9 cow, 10 diningtable, 11 dog,
-        # 12 horse, 13 motorbike, 14 person, 15 pottedplant,
-        # 16 sheep, 17 sofa, 18 train, 19 tvmonitor, 20 ignored/background.
-        #
-        # Recommended first test:
-        #   sfp_dtlr_structure_protect_enable=True
-        #   sfp_dtlr_structure_gain_thd=0.03 or 0.05
         self.sfp_dtlr_structure_protect_enable = True
         self.sfp_dtlr_structure_gain_thd = 0.00
         self.sfp_dtlr_structure_classes = (4, 8, 10)  # bottle, chair, diningtable
 
-        # Optional beta scaling for structure-sensitive classes.
-        # Keep disabled unless no-flip protection is not enough.
         self.sfp_dtlr_class_beta_enable = False
         self.sfp_dtlr_structure_beta_scale = 0.60
-        # Class-adaptive DTLR beta.
         self.sfp_dtlr_class_beta_classes = (4, 8, 10)
         self.sfp_dtlr_class_beta_scale = 0.75
         # Attribute residual correction.
-        # Current best observed:
-        #   v2 conflict-aware attribute re-ranking
-        #   conflict_only=True, conflict_mode="both", eta=20.00, topm=5
-        #   apply_classes=(4, 8, 10), mIoU around 0.8564.
-        # Attribute residual correction.
-        # Final paper/debug setting:
-        #   PSAR-AP + class-wise eta + refined table attributes.
-        #   apply_classes=(8,10), chair_eta=40, table_eta=32, topm=5.
         self.sfp_attr_enable = True
         self.sfp_attr_class_eta_enable = True
         self.sfp_attr_eta_chair = 40.00
@@ -705,15 +596,12 @@ class PGLP_Seg(nn.Module):
         self.sfp_attr_conflict_only = False
         self.sfp_attr_conflict_mode = "both"  # "before", "both", or "after"
 
-        # Keep v3 directed residual disabled because experiments showed it is worse.
         self.sfp_attr_directed_enable = False
         self.sfp_attr_directed_positive_only = False
 
-        # Positive-only attribute residual: boost attribute-supported channels only.
         self.sfp_attr_positive_only = True
         self.sfp_attr_negative_only = False
 
-        # Best prompt template observed in the eta/apply-class sweep.
         self.sfp_attr_prompt_template = "a photo of a {}, which has {}"
 
         self.sfp_attr_class_names = {
@@ -739,8 +627,6 @@ class PGLP_Seg(nn.Module):
             19: "tv monitor",
         }
 
-        # Keep bottle attributes in the dictionary for ablations, but do not apply
-        # them in the final setting because apply_classes=(8,10).
         self.sfp_attr_default_attributes = {
             4: [
                 "a narrow neck",
@@ -823,7 +709,6 @@ class PGLP_Seg(nn.Module):
             conf = prob.max(dim=1)[0]  # [B, H, W]
 
             # Class ambiguity: small top-1/top-2 margin means the token is
-            # semantically uncertain, even if the max confidence is not very low.
             top2_prob = torch.topk(prob, k=2, dim=1).values  # [B, 2, H, W]
             margin = top2_prob[:, 0] - top2_prob[:, 1]       # [B, H, W], in [0, 1]
 
@@ -832,8 +717,6 @@ class PGLP_Seg(nn.Module):
             flat_margin = margin.reshape(B, -1)
 
             # Original valid region: score-valid and low-confidence.
-            # Margin-aware mode only changes ranking by default.
-            # Optional hard margin gate can be enabled for stricter ambiguity filtering.
             outlier_flat = torch.zeros_like(flat_score, dtype=torch.bool)
 
             margin_enable = bool(getattr(self, "sfp_margin_enable", False))
@@ -842,13 +725,9 @@ class PGLP_Seg(nn.Module):
             margin_thd = float(getattr(self, "sfp_margin_thd", 0.20))
 
             if margin_enable:
-                # Normalize region score per image so that lambda has a stable meaning.
                 score_min = flat_score.amin(dim=1, keepdim=True)
                 score_max = flat_score.amax(dim=1, keepdim=True)
                 flat_score_rank = (flat_score - score_min) / (score_max - score_min).clamp_min(1e-6)
-
-                # Higher means more suspicious:
-                #   high region score + small semantic margin.
                 rank_score = flat_score_rank + margin_lambda * (1.0 - flat_margin)
             else:
                 rank_score = flat_score
@@ -1048,9 +927,7 @@ class PGLP_Seg(nn.Module):
             boundary = F.max_pool2d(boundary, kernel_size=3, stride=1, padding=1)
             update_mask = update_mask * boundary
 
-        # Structure-preserving protection:
-        # if DTLR wants to flip a structure-sensitive class to another class,
-        # only allow the update when filtered confidence is sufficiently higher.
+        # Structure-preserving protection
         if getattr(self, "sfp_dtlr_structure_protect_enable", False):
             scale = float(getattr(self, "sfp_conf_scale", 10.0))
 
@@ -1135,13 +1012,6 @@ class PGLP_Seg(nn.Module):
         return output_new
 
     def sfp_fast_bilateral_logit_solver(self, output, image):
-        """
-        Selected-region fast bilateral logit solver (local PyTorch approximation).
-
-        Only selected uncertain tokens are refined. Nearby high-confidence
-        logits are used as anchors, and RGB bilateral affinity suppresses
-        propagation across image boundaries.
-        """
         if not getattr(self, "sfp_fbls_enable", False):
             return output
 
@@ -1171,8 +1041,6 @@ class PGLP_Seg(nn.Module):
         pad = k // 2
         num_neighbors = k * k
 
-        # Downsample the RGB guide to logit resolution. The input is often
-        # normalized, so use per-image min-max normalization for stable distances.
         guide = F.interpolate(
             image.to(device=device, dtype=dtype),
             size=(H, W),
@@ -1186,7 +1054,6 @@ class PGLP_Seg(nn.Module):
         prob = torch.softmax(output * float(self.sfp_conf_scale), dim=1)
         conf = prob.max(dim=1, keepdim=True)[0]
 
-        # High-confidence, non-selected pixels serve as semantic anchors.
         source_mask = (conf > float(self.sfp_fbls_conf_thd)).to(dtype) * (1.0 - selected)
         if source_mask.sum() < 1:
             return output
@@ -1248,20 +1115,6 @@ class PGLP_Seg(nn.Module):
         return output_new
 
     def _sfp_encode_text_prompts(self, prompts, device):
-        """
-        Encode attribute prompts with the frozen CLIP text encoder.
-
-        Important:
-        We do NOT call self.clip.encode_text() here because some CLIP wrappers
-        checkpoints keep the CLIP text transformer in fp32 while
-        text_projection is fp16. OpenAI CLIP's encode_text directly performs
-        x @ text_projection and can then raise:
-            expected mat1 and mat2 to have the same dtype, but got float != Half
-
-        This manual encoder casts only the final pooled text feature to
-        text_projection.dtype before matrix multiplication, then returns fp32
-        normalized features for the attribute residual branch.
-        """
         try:
             tokens = clip.tokenize(prompts, truncate=True).to(device)
         except TypeError:
@@ -1298,12 +1151,6 @@ class PGLP_Seg(nn.Module):
         return text_features
 
     def _sfp_build_attribute_bank(self, device, dtype):
-        """
-        Build a small class-attribute text bank:
-            attr_bank: [G, K, D]
-            class_ids: [G]
-        where G is the number of attribute-refined classes.
-        """
         if (
             self.sfp_attr_bank is not None
             and self.sfp_attr_bank_device == device
@@ -1360,24 +1207,7 @@ class PGLP_Seg(nn.Module):
         output_before_dtlr=None,
         output_after_dtlr=None,
     ):
-        """
-        Attribute-guided residual correction.
 
-        v1 behavior:
-            update selected tokens whose current prediction is in
-            sfp_attr_apply_classes.
-
-        v2 conflict-only behavior:
-            if sfp_attr_conflict_only=True and both DTLR-side logits are given,
-            update only selected tokens whose class changes from
-            output_before_dtlr to output_after_dtlr.
-
-        output_new = output + eta * update_mask * attr_logits
-
-        v2.2 polarity ablation:
-            positive_only keeps only positive residual values.
-            negative_only keeps only negative residual values.
-        """
         if not getattr(self, "sfp_attr_enable", False):
             return output
 
@@ -1480,8 +1310,6 @@ class PGLP_Seg(nn.Module):
         topm = min(int(getattr(self, "sfp_attr_topm", 3)), sim_attr.shape[2])
         attr_score = sim_attr.topk(k=topm, dim=2).values.mean(dim=2)  # [B,G,H,W]
 
-        # Center among the attribute-refined classes. This makes the branch
-        # a relative class correction instead of a pure positive bias.
         attr_score = attr_score - attr_score.mean(dim=1, keepdim=True)
 
         attr_logits = output.new_zeros(output.shape)
@@ -1489,10 +1317,6 @@ class PGLP_Seg(nn.Module):
             if 0 <= int(cls_idx) < C:
                 attr_logits[:, int(cls_idx), :, :] = attr_score[:, gi, :, :].to(dtype)
 
-        # v3: class-directed conflict residual.
-        # In conflict-only mode, only the attribute channel(s) involved in the
-        # DTLR before/after class conflict are allowed to update. This avoids
-        # injecting bottle/table attribute logits into a chair-related conflict.
         directed_enable = bool(getattr(self, "sfp_attr_directed_enable", False))
         if (
             directed_enable
@@ -1533,14 +1357,10 @@ class PGLP_Seg(nn.Module):
             if bool(getattr(self, "sfp_attr_directed_positive_only", False)):
                 attr_logits = attr_logits.clamp_min(0.0)
 
-        # v2.2 polarity ablation.
-        # Default: keep both positive boosting and negative suppression.
-        # positive_only=True: only boost attribute-supported channels.
-        # negative_only=True: only suppress attribute-unsupported channels.
         pos_only = bool(getattr(self, "sfp_attr_positive_only", False))
         neg_only = bool(getattr(self, "sfp_attr_negative_only", False))
         if pos_only and neg_only:
-            # Avoid accidentally zeroing the branch by enabling both.
+            
             neg_only = False
 
         if pos_only:
@@ -1562,9 +1382,6 @@ class PGLP_Seg(nn.Module):
                 getattr(self, "sfp_attr_eta", 36.0),
             ))
 
-            # VOC zero-based:
-            # 8  = chair
-            # 10 = diningtable
             eta_map[:, 8:9, :, :] = eta_chair
             eta_map[:, 10:11, :, :] = eta_table
 
