@@ -121,4 +121,3 @@ python tools/train.py --cfg config/cityscapes_train_ori_cfg.yaml --model PGLP_Se
 - Pseudo-label JSON files used by training are stored in `text/`.
 - Checkpoint paths use `weights/*.pth`.
 - Prediction outputs are written to `outputs/`.
-- Generated predictions, checkpoints, local datasets, and local visualization outputs are not tracked in git.
