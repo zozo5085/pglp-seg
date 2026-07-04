@@ -84,9 +84,17 @@ under `text/`.
 Expected pseudo-label paths:
 
 ```text
-text/voc_pseudo_label_pglp.json
-text/ade_pseudo_label_GTpresence_top5area_20210.json
-text/cityscapes_pseudo_label_22972.json
+text/voc_pseudo_label.json
+text/ade_pseudo_label.json
+text/cityscapes_pseudo_label.json
+```
+
+Generate them with CLIP sliding-window image-level class prediction:
+
+```bash
+python tools/pseudo_class.py --cfg config/voc_train_ori_cfg.yaml --model PGLP_Seg
+python tools/pseudo_class.py --cfg config/ade_train_ori_cfg.yaml --model PGLP_Seg
+python tools/pseudo_class.py --cfg config/cityscapes_train_ori_cfg.yaml --model PGLP_Seg
 ```
 
 VOC:

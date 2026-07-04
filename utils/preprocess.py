@@ -156,11 +156,11 @@ def _load_pseudo_classes(json_file_path: str):
 
 def _get_dataset_pseudo_json(cfg, dataset_name: str) -> str:
     default_map = {
-        'voc': 'text/voc_pseudo_label_pglp.json',
+        'voc': 'text/voc_pseudo_label.json',
         'context': 'text/context_pseudo_label_pglp_4998.json',
-        'ade': 'text/ade_pseudo_label_GTpresence_top5area_20210.json',
+        'ade': 'text/ade_pseudo_label.json',
         'stuff': 'text/coco_pseudo_label_GTpresence_top5area_118287.json',
-        'cityscapes': 'text/cityscapes_pseudo_label_22972.json',
+        'cityscapes': 'text/cityscapes_pseudo_label.json',
     }
     if dataset_name not in default_map:
         raise ValueError(f'No default pseudo label json configured for dataset: {dataset_name}')
