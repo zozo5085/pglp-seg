@@ -109,7 +109,7 @@ def train(rank, world_size):
                 bad.append(name)
 
     if len(bad) == 0:
-        print("OK: CLIP / ViT / proj / logit_scale are frozen.")
+        print("CLIP / ViT / proj / logit_scale are frozen.")
     else:
         print("WARNING: these frozen parameters are trainable:")
         for n in bad:
@@ -202,7 +202,6 @@ def train(rank, world_size):
                     stats_batch = getattr(inner_model, "sfp_last_stats_batch", [])
 
                     if stats_batch is not None and len(stats_batch) > 0:
-                        # 大多數情況 batch size = 1，所以取 stats_batch[0]
                         stat = stats_batch[0].copy()
                         stat["filename"] = val_filenames[idx]
                         stat["img_idx"] = int(idx)
@@ -214,10 +213,8 @@ def train(rank, world_size):
                 dataset_name = str(cfg.DATASET.NAME).lower()
 
                 if dataset_name == "voc":
-                    # VOC protocol: keep foreground-only behavior.
                     eval_num_classes = c_num + 1
                 else:
-                    # Context / ADE / Cityscapes do not add an extra background class here.
                     eval_num_classes = c_num
 
                 print(
@@ -274,7 +271,6 @@ def train(rank, world_size):
                     print(f"outlier mean = {outliers.mean():.2f}")
                     print(f"saved to     = {ratio_csv}")
                 if dataset_name == "voc":
-                    # foreground-only average, ignore the extra background slot
                     avg = iou["IoU"][:c_num].sum() / c_num
                 else:
                     avg = iou["IoU"].sum() / c_num
