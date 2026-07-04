@@ -134,7 +134,6 @@ def _load_pseudo_classes(json_file_path: str):
     except Exception:
         pass
 
-    # 再退回逐行 JSON Lines
     with open(json_file_path, 'r', encoding='utf-8') as f:
         for line_idx, line in enumerate(f, start=1):
             line = line.strip()
@@ -617,7 +616,6 @@ def read_file_list(cfg, load_pseudo=True):
 
             x = norm_line(x)
 
-            # image path cases
 
             if 'leftImg8bit/train_extra/' in x:
                 return 'train_extra', 'gtCoarse'
@@ -628,8 +626,6 @@ def read_file_list(cfg, load_pseudo=True):
             if 'leftImg8bit/val/' in x:
                 return 'val', 'gtFine'
 
-            # label path cases
-
             if 'gtCoarse/train_extra/' in x:
                 return 'train_extra', 'gtCoarse'
 
@@ -639,7 +635,6 @@ def read_file_list(cfg, load_pseudo=True):
             if 'gtFine/val/' in x:
                 return 'val', 'gtFine'
 
-            # fallback
 
             if default_split == 'train_extra':
                 return 'train_extra', 'gtCoarse'
@@ -726,7 +721,6 @@ def read_file_list(cfg, load_pseudo=True):
 
                 return (root + f'gtFine/{split}/' + city_id + '_gtFine_labelTrainIds.png').replace('//', '/')
 
-        # train: 你的 22972 pseudo 是 train_extra，所以 default 用 train_extra
 
         train_images = [make_img_path(i, 'train_extra') for i in train_imgs_raw]
 
@@ -742,7 +736,6 @@ def read_file_list(cfg, load_pseudo=True):
 
                 train_labels.append(make_label_path(img_i, 'train_extra'))
 
-        # val: 正常走 val + gtFine
 
         val_images = [make_img_path(i, 'val') for i in val_imgs_raw]
 
