@@ -130,8 +130,6 @@ def default_output_path(cfg):
 
 def generate_pseudo_labels(images, labels, cfg, window_size, step_size, out_path):
 
-    # Reset output file BEFORE generation.
-    # Do not write temp here, because temp is created per image.
     reset_output_file(out_path)
 
     clip_model, new_clip_preprocess = clip.load("ViT-B/16")
@@ -172,8 +170,6 @@ def generate_pseudo_labels(images, labels, cfg, window_size, step_size, out_path
             temp = []
             cls_dict = {}
 
-            # Pseudo label generation does not require GT labels.
-            # Skip label loading and preprocess for speed.
             img = Image.open(image).convert("RGB")
             width, height = img.size
 
@@ -218,15 +214,13 @@ def generate_pseudo_labels(images, labels, cfg, window_size, step_size, out_path
                         cls = int(cls)
                         cls_dict[cls] = cls_dict.get(cls, 0) + 1
 
-            # Use classes predicted by sliding windows.
             if len(cls_dict) > 0:
-                # sort by occurrence count, high to low
+
                 sorted_items = sorted(cls_dict.items(), key=lambda x: x[1], reverse=True)
                 temp = [int(k) for k, v in sorted_items[:cfg.DATASET.K]]
             else:
                 temp = []
 
-            # Fallback: whole-image top-K
             if len(temp) == 0:
                 full_img = new_clip_preprocess(img).unsqueeze(dim=0).to(device)
 
@@ -270,7 +264,6 @@ if __name__ == '__main__':
     s = w / 2
     out_path = args.out_file if args.out_file else default_output_path(cfg)
 
-    # _, _, train_images, train_labels, _, _, _, pseudo_classes = read_file_list(cfg)
     _, _, train_images, train_labels, _, _, _, _old_pseudo_classes = read_file_list(
         cfg,
         load_pseudo=False
