@@ -34,9 +34,7 @@ data/
 
 Large checkpoints are not stored in git.
 
-Download weights from the anonymous project weight folder:
-
-[Project weight folder](YOUR_ANONYMOUS_CLOUD_LINK)
+Download weights from the following links:
 
 Place files in the following paths:
 
@@ -54,9 +52,9 @@ text/
 
 | Dataset | Checkpoint |
 | --- | --- |
-| PASCAL VOC | `weights/voc_pglp_seg.pth` |
-| ADE20K | `weights/ade_pglp_seg.pth` |
-| Cityscapes | `weights/city_pglp_seg.pth` |
+| PASCAL VOC | [86.20 mIoU](https://drive.google.com/file/d/1B53lYGwJIlDEhRQ5fob7UkmixrvUh7kj/view) -> `weights/voc_pglp_seg.pth` |
+| ADE20K | [18.02 mIoU](https://drive.google.com/file/d/1P-ab36_-nU-Mcntnb8PRKXFTaWsq6FGR/view?usp=drive_link) -> `weights/ade_pglp_seg.pth` |
+| Cityscapes | [40.44 mIoU](https://drive.google.com/file/d/1dzcEQIhla8cIKOKTEw5mMWzFwvlbpiJf/view?usp=drive_link) -> `weights/city_pglp_seg.pth` |
 
 ## Evaluation
 
