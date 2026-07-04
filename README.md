@@ -76,6 +76,37 @@ Cityscapes:
 python tools/test.py --cfg config/cityscapes_test_ori_cfg.yaml --model PGLP_Seg --model_module model.pglp_seg
 ```
 
+## Training
+
+Training uses the dataset-specific train configs and pseudo-label JSON files
+under `text/`.
+
+Expected pseudo-label paths:
+
+```text
+text/voc_pseudo_label_pglp.json
+text/ade_pseudo_label_GTpresence_top5area_20210.json
+text/cityscapes_pseudo_label_22972.json
+```
+
+VOC:
+
+```bash
+python tools/train.py --cfg config/voc_train_ori_cfg.yaml --model PGLP_Seg
+```
+
+ADE20K:
+
+```bash
+python tools/train.py --cfg config/ade_train_ori_cfg.yaml --model PGLP_Seg
+```
+
+Cityscapes:
+
+```bash
+python tools/train.py --cfg config/cityscapes_train_ori_cfg.yaml --model PGLP_Seg
+```
+
 ## Notes
 
 - Text embeddings can be regenerated with `utils/prompt_engineering.py`.

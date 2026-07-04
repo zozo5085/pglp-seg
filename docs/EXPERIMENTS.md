@@ -58,6 +58,34 @@ Expected config paths:
 - text embedding: `text/city_ViT16_clip_text.pth`
 - output: `outputs/city_pglp_seg/`
 
+## Training
+
+Training requires the corresponding pseudo-label JSON files under `text/`.
+
+VOC:
+
+```bash
+python tools/train.py \
+  --cfg config/voc_train_ori_cfg.yaml \
+  --model PGLP_Seg
+```
+
+ADE20K:
+
+```bash
+python tools/train.py \
+  --cfg config/ade_train_ori_cfg.yaml \
+  --model PGLP_Seg
+```
+
+Cityscapes:
+
+```bash
+python tools/train.py \
+  --cfg config/cityscapes_train_ori_cfg.yaml \
+  --model PGLP_Seg
+```
+
 ## Qualitative Figures
 
 VOC comparison figures can be generated with:
