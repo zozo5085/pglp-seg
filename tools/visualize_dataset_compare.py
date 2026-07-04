@@ -14,10 +14,6 @@ if root not in sys.path:
 from config.configs import cfg_from_file
 from utils.preprocess import read_file_list
 
-
-# -----------------------------
-# Palettes
-# -----------------------------
 VOC_CLASSES = [
     "aeroplane", "bicycle", "bird", "boat", "bottle",
     "bus", "car", "cat", "chair", "cow",
@@ -41,7 +37,7 @@ CITY_COLORS = np.array([
 
 
 def voc_palette_raw():
-    """VOC palette: index 0 background, 1..20 classes."""
+    
     palette = []
     for j in range(256):
         lab = j
@@ -64,7 +60,6 @@ def generic_palette(num_classes, seed=123):
     rng = np.random.default_rng(seed)
     colors = rng.integers(30, 235, size=(num_classes, 3), dtype=np.uint8)
 
-    # make first several classes stable and visually distinct
     base = np.array([
         [230, 25, 75], [60, 180, 75], [255, 225, 25], [0, 130, 200],
         [245, 130, 48], [145, 30, 180], [70, 240, 240], [240, 50, 230],
@@ -76,21 +71,7 @@ def generic_palette(num_classes, seed=123):
     colors[:n] = base[:n]
     return colors
 
-
-# -----------------------------
-# File indexing
-# -----------------------------
 def canonical_id_from_name(name):
-    """
-    Robustly extract dataset image id from filenames.
-
-    Handles:
-      pglp_seg_2011_003055.pt -> 2011_003055
-      2008_000149.pt -> 2008_000149
-      ADE_val_00000001.pt -> ADE_val_00000001
-      000000000139.pt -> 000000000139
-      frankfurt_000000_000294_leftImg8bit.pt -> frankfurt_000000_000294
-    """
     stem = os.path.splitext(os.path.basename(str(name)))[0]
 
     m = re.search(r"[a-zA-Z]+_\d{6}_\d{6}", stem)
@@ -109,7 +90,6 @@ def canonical_id_from_name(name):
     if m:
         return m.group(0)
 
-    # remove common suffixes
     for suf in [
         "_leftImg8bit", "_gtFine_labelTrainIds", "_gtFine_labelIds",
         "_27labelTrainIds", "_labelTrainIds", "_labelIds",
@@ -145,10 +125,6 @@ def build_pt_index(pred_dir, recursive=True):
 
     return index
 
-
-# -----------------------------
-# Label / prediction processing
-# -----------------------------
 def read_file_list_safe(cfg):
     try:
         return read_file_list(cfg, load_pseudo=False)
@@ -173,7 +149,6 @@ def load_prediction(pt_path, out_hw=None, num_classes=None):
 
     x = x.detach().cpu().float().squeeze()
 
-    # [C,H,W] logits/probs
     if x.ndim == 3:
         if num_classes is not None and x.shape[0] != int(num_classes) and x.shape[-1] == int(num_classes):
             x = x.permute(2, 0, 1)
@@ -189,7 +164,6 @@ def load_prediction(pt_path, out_hw=None, num_classes=None):
         pred = torch.argmax(x, dim=0).long().numpy()
         return pred.astype(np.int64)
 
-    # [H,W] label map
     if x.ndim == 2:
         pred = x.long().numpy()
         if out_hw is not None and tuple(pred.shape) != tuple(out_hw):
@@ -202,29 +176,24 @@ def load_prediction(pt_path, out_hw=None, num_classes=None):
 
 
 def prepare_gt_zero_based(label_raw, dataset_name, reduce_zero_label, num_classes):
-    """
-    Return zero-based GT labels:
-      0..C-1 valid classes, 255 ignore.
-    """
     lab = np.asarray(label_raw).astype(np.int64).copy()
     name = str(dataset_name).lower()
 
     if name == "voc":
-        # VOC raw: 0 background, 1..20 classes, 255 ignore
+
         out = np.full_like(lab, 255, dtype=np.int64)
         valid = (lab >= 1) & (lab <= int(num_classes))
         out[valid] = lab[valid] - 1
         return out
 
     if bool(reduce_zero_label):
-        # ADE / Context-style: raw 0 ignore, raw 1..C -> 0..C-1
+
         lab[lab == 0] = 255
         lab = lab - 1
         lab[lab == 254] = 255
         lab[(lab < 0) | (lab >= int(num_classes))] = 255
         return lab
 
-    # City / COCO-Stuff-27-style: already 0..C-1, 255 ignore
     lab[(lab < 0) | (lab >= int(num_classes))] = 255
     return lab
 
@@ -236,7 +205,6 @@ def get_palette(dataset_name, num_classes):
         return CITY_COLORS.copy()
 
     if name == "voc":
-        # For zero-based VOC class ids 0..19, use raw VOC colors 1..20.
         return VOC_RAW_PALETTE[1:int(num_classes)+1].copy()
 
     return generic_palette(int(num_classes), seed=123)
@@ -307,9 +275,6 @@ def resize_to_same_height(arr, target_h):
 
 
 def make_panel(items, out_path, target_h=230):
-    """
-    items: list of (title, np_rgb)
-    """
     panels = []
     for title, arr in items:
         arr = resize_to_same_height(arr, target_h)
@@ -415,7 +380,6 @@ def main():
         b_pred = load_prediction(b_path, out_hw=(h, w), num_classes=num_classes)
         o_pred = load_prediction(o_path, out_hw=(h, w), num_classes=num_classes)
 
-        # Clamp invalid predicted labels
         b_pred[(b_pred < 0) | (b_pred >= num_classes)] = 255
         o_pred[(o_pred < 0) | (o_pred >= num_classes)] = 255
 
@@ -477,7 +441,6 @@ def main():
     print("out:", args.out_root)
 
     if args.make_summary and len(made) > 0:
-        # create one large contact sheet with first panel.png from each sample
         panel_paths = [
             os.path.join(args.out_root, dataset_name, image_id, "panel.png")
             for image_id in made
