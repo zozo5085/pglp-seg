@@ -211,20 +211,10 @@ def sanitize_tag(tag):
 
 
 def threshold_tag(thd):
-    """0.05 -> thd005, 0.55 -> thd055."""
     return f"thd{int(round(float(thd) * 100)):02d}" if float(thd) >= 1.0 else f"thd{int(round(float(thd) * 100)):03d}"
 
 
 def build_run_save_dir(base_save_dir, args):
-    """
-    Create a unique run directory from the command-line options.
-
-    Example:
-      cfg.SAVE_DIR/eval_runs/pglp_seg_final_paper_fixed_thd005_20260620_153012/
-
-    This prevents Windows PermissionError when CSVs are open in Excel and
-    avoids overwriting threshold-sweep outputs.
-    """
     if bool(getattr(args, "no_auto_run_dir", False)):
         return base_save_dir
 
@@ -250,7 +240,6 @@ def build_run_save_dir(base_save_dir, args):
 def load_state_dict_flexible(path):
     ckpt = torch.load(path, map_location="cpu", weights_only=False)
 
-    # 支援一般 state_dict，也支援 checkpoint dict
     if isinstance(ckpt, dict):
         if "model_state_dict" in ckpt:
             ckpt = ckpt["model_state_dict"]
@@ -266,8 +255,6 @@ def load_state_dict_flexible(path):
 
     new_state = {}
     for key, value in ckpt.items():
-        # 官方 DDP 權重: module.xxx
-        # 單卡權重: xxx
         if key.startswith("module."):
             new_key = key[len("module."):]
         else:
@@ -288,7 +275,6 @@ def load_debug_names(debug_list_path):
             item = line.strip()
             if not item:
                 continue
-            # Allow either "2007_003106" or "2007_003106.jpg/.png/.pt".
             item = os.path.splitext(os.path.basename(item))[0]
             names.add(item)
 
@@ -342,12 +328,6 @@ def palette_rgb_array():
 
 
 def save_overlay_png(value_buf, mask, path, alpha=0.55, hide_background=True):
-    """
-    Save a mask overlay on the input image.
-    mask:
-        standard VOC ids 0..20, 255 ignore, or foreground ids 0..19.
-        For standard VOC visualization, use 0 as background and 1..20 as classes.
-    """
     base = Image.open(io.BytesIO(value_buf)).convert("RGB")
     base_np = np.asarray(base).astype(np.float32)
 
@@ -369,11 +349,6 @@ def save_overlay_png(value_buf, mask, path, alpha=0.55, hide_background=True):
 
 
 def fast_hist_standard21(pred_standard, label_raw, num_classes=21, ignore_index=255):
-    """
-    Standard VOC-style confusion matrix:
-      label_raw: 0=background, 1..20=foreground, 255=ignore.
-      pred_standard: 0=background, 1..20=foreground.
-    """
     pred = np.asarray(pred_standard).astype(np.int64)
     lab = np.asarray(label_raw).astype(np.int64)
     valid = (lab != ignore_index) & (lab >= 0) & (lab < num_classes) & (pred >= 0) & (pred < num_classes)
@@ -392,10 +367,6 @@ def iou_from_hist(hist):
 
 
 def otsu_threshold_np(values, num_bins=256):
-    """
-    Pure NumPy Otsu threshold for a probability map.
-    values: ndarray, expected in [0, 1].
-    """
     v = np.asarray(values, dtype=np.float32)
     v = v[np.isfinite(v)]
     if v.size == 0:
@@ -433,16 +404,6 @@ def otsu_threshold_np(values, num_bins=256):
 
 
 def compute_bg_threshold(max_prob_np, args):
-    """
-    Returns the threshold used for this image.
-
-    fixed:
-        use args.paper_bg_thd.
-
-    adaptive:
-        use Otsu(max_foreground_prob), clipped to [paper_bg_min, paper_bg_max],
-        with a small foreground-ratio safety adjustment.
-    """
     mode = str(getattr(args, "paper_bg_mode", "fixed")).lower()
     if mode == "fixed":
         return float(args.paper_bg_thd)
@@ -468,16 +429,10 @@ def compute_bg_threshold(max_prob_np, args):
 
 
 def save_gray_png(arr, path, size_hw=None):
-    """
-    Save a 2D float map as normalized grayscale PNG.
-    Uses bilinear resize for heatmaps.
-    """
     arr = np.asarray(arr).astype(np.float32)
     arr = np.squeeze(arr)
 
     if arr.ndim == 3:
-        # Common forms after squeeze can still be [C,H,W].
-        # Use first channel if needed.
         arr = arr[0]
 
     arr = np.nan_to_num(arr, nan=0.0, posinf=0.0, neginf=0.0)
@@ -508,17 +463,11 @@ def squeeze_map(x):
     arr = tensor_to_numpy(x)
     arr = np.squeeze(arr)
     if arr.ndim == 3:
-        # If [C,H,W] remains, use channel 0 by default.
         arr = arr[0]
     return arr
 
 
 def prepare_eval_label(label_raw, reduce_zero_label):
-    """
-    Match VOC evaluation convention used in this repo:
-      raw label 0 is background/ignored.
-      raw labels 1..20 become 0..19 when reduce_zero_label=True.
-    """
     label = label_raw.astype(np.int64).copy()
     label[label == 0] = 255
 
@@ -567,15 +516,9 @@ def save_debug_maps(
     max_prob_np=None,
     bg_thd_used=None,
 ):
-    """
-    Save lightweight maps needed for qualitative visualization:
-      input image, GT, final pred, URD mask/score, DTLR delta,
-      attribute update mask, chair/table attribute maps, and low-res predictions.
-    """
     out_dir = os.path.join(debug_root, filename)
     ensure_dir(out_dir)
 
-    # Save input image for panel creation.
     try:
         input_img = Image.open(io.BytesIO(value_buf)).convert("RGB")
         input_img.save(os.path.join(out_dir, "image.jpg"))
@@ -585,8 +528,6 @@ def save_debug_maps(
     save_index_png(label_eval, os.path.join(out_dir, "gt_foreground_ignorebg.png"), size_hw=ori_shape)
     save_index_png(pred_np, os.path.join(out_dir, "pred_final_foreground20.png"), size_hw=ori_shape)
 
-    # Standard 21-class visualization for paper sanity:
-    # 0=background, 1..20=VOC classes. This is NOT the same as the foreground-only metric.
     if label_raw is not None:
         save_index_png(label_raw, os.path.join(out_dir, "gt_standard21.png"), size_hw=ori_shape)
         save_overlay_png(value_buf, label_raw, os.path.join(out_dir, "gt_standard21_overlay.png"))
@@ -602,7 +543,6 @@ def save_debug_maps(
         with open(os.path.join(out_dir, "bg_threshold_used.txt"), "w", encoding="utf-8") as f:
             f.write(f"{float(bg_thd_used):.6f}\n")
 
-    # Backward-compatible names.
     save_index_png(label_eval, os.path.join(out_dir, "gt.png"), size_hw=ori_shape)
     save_index_png(pred_np, os.path.join(out_dir, "pred_final.png"), size_hw=ori_shape)
 
@@ -610,7 +550,6 @@ def save_debug_maps(
     if maps is None:
         maps = {}
 
-    # Save all raw maps into one npz for later custom analysis.
     npz_dict = {}
     for key, value in maps.items():
         try:
@@ -626,7 +565,6 @@ def save_debug_maps(
     if maps is None:
         maps = {}
 
-    # Save all raw maps into one npz for later custom analysis.
     npz_dict = {}
 
     for key, value in maps.items():
@@ -637,9 +575,6 @@ def save_debug_maps(
         except Exception as exc:
             print(f"[Debug] failed to pack map {key}: {exc}", flush=True)
 
-    # -------------------------------------------------
-    # Extra debug tensors for L_q, B_p, and L_0
-    # -------------------------------------------------
     if hasattr(raw_model, "_debug_tensors"):
         for k, v in raw_model._debug_tensors.items():
             try:
@@ -754,11 +689,6 @@ def test():
         pseudo_classes,
     ) = read_file_list(cfg)
 
-    # Important:
-    # Some legacy utilities build result paths by plain string
-    # concatenation (cfg.SAVE_DIR + filename + ".pt"). When cfg.SAVE_DIR has no
-    # trailing slash, this becomes ".../run_dir2007_000033.pt".
-    # We therefore rebuild the prediction path list with os.path.join here.
     results_iou = [
         os.path.join(cfg.SAVE_DIR, filename + ".pt")
         for filename in val_filenames
@@ -789,7 +719,6 @@ def test():
 
     new_weight = load_state_dict_flexible(cfg.LOAD_PATH)
 
-    # strict=True ensures the checkpoint is really compatible.
     model.load_state_dict(new_weight, strict=True)
     print("[Load] checkpoint loaded with strict=True")
 
@@ -803,8 +732,6 @@ def test():
     success_num = 0
     debug_saved_count = 0
 
-    # Accumulate diagnostic 21-class VOC histogram.
-    # Class id 0 is background; ids 1..20 are VOC foreground classes.
     hist_standard21 = np.zeros((21, 21), dtype=np.float64)
 
     with torch.no_grad():
@@ -888,11 +815,6 @@ def test():
             pred_np = output.detach().cpu().numpy().astype(np.int64)
             max_prob_np = max_prob.squeeze(dim=0).detach().cpu().numpy().astype(np.float32)
 
-            # Standard 21-class visualization/evaluation diagnostic:
-            # foreground class ids 0..19 become VOC ids 1..20.
-            # Low-confidence pixels become background id 0.
-            # This is for visualization/diagnostic only; it does not affect
-            # the foreground-only mIoU used as the main VOC metric.
             bg_thd_used = compute_bg_threshold(max_prob_np, args)
             pred_standard_np = pred_np + 1
             pred_standard_np[max_prob_np < bg_thd_used] = 0
