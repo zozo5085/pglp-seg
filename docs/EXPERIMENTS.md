@@ -9,7 +9,7 @@ under `data/`.
 Protocol: foreground-only mIoU, background ignored.
 
 ```bash
-python tools/test_lrab_v1.py \
+python tools/test.py \
   --cfg config/voc_test_ori_cfg.yaml \
   --model PGLP_Seg \
   --model_module model.pglp_seg \
@@ -27,7 +27,7 @@ Expected config paths:
 Protocol: ADE20K label space.
 
 ```bash
-python tools/test_lrab_v1.py \
+python tools/test.py \
   --cfg config/ade_test_ori_cfg.yaml \
   --model PGLP_Seg \
   --model_module model.pglp_seg \
@@ -37,7 +37,7 @@ python tools/test_lrab_v1.py \
 Expected config paths:
 
 - checkpoint: `weights/ade_pglp_seg.pth`
-- text embedding: `text/ade_ViT16_clip_text_local.pth`
+- text embedding: `text/ade_ViT16_clip_text.pth`
 - output: `outputs/ade_pglp_seg/`
 
 ## Cityscapes
@@ -45,7 +45,7 @@ Expected config paths:
 Protocol: Cityscapes label space.
 
 ```bash
-python tools/test_lrab_v1.py \
+python tools/test.py \
   --cfg config/cityscapes_test_ori_cfg.yaml \
   --model PGLP_Seg \
   --model_module model.pglp_seg \

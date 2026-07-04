@@ -3,13 +3,16 @@
 Large checkpoints are not stored in git. Upload the files below to the project
 cloud folder and ask users to place them in the same relative paths.
 
+Download folder:
+[PGLP-Seg checkpoints](https://drive.google.com/drive/folders/1ZKs5_LCFU_QBRXABJTm-MPOJOvIorqal)
+
 ## Required Checkpoints
 
-| Target path in repo | Dataset | Size |
-| --- | --- | ---: |
-| `weights/voc_pglp_seg.pth` | PASCAL VOC | 573.84 MB |
-| `weights/ade_pglp_seg.pth` | ADE20K | 582.30 MB |
-| `weights/city_pglp_seg.pth` | Cityscapes | 573.79 MB |
+| Target path in repo | Dataset | Download / reported score | Size |
+| --- | --- | --- | ---: |
+| `weights/voc_pglp_seg.pth` | PASCAL VOC | [86.20 mIoU](https://drive.google.com/drive/folders/1ZKs5_LCFU_QBRXABJTm-MPOJOvIorqal) | 573.84 MB |
+| `weights/ade_pglp_seg.pth` | ADE20K | [18.02 mIoU](https://drive.google.com/drive/folders/1ZKs5_LCFU_QBRXABJTm-MPOJOvIorqal) | 582.30 MB |
+| `weights/city_pglp_seg.pth` | Cityscapes | [40.44 mIoU](https://drive.google.com/drive/folders/1ZKs5_LCFU_QBRXABJTm-MPOJOvIorqal) | 573.79 MB |
 
 These three files are enough to run the main VOC, ADE20K, and Cityscapes
 evaluation configs in this repository. They should be downloaded from the
@@ -17,14 +20,14 @@ project cloud folder and placed at the target paths above.
 
 ## Optional Text Embeddings
 
-These files are small. They can either be uploaded with the checkpoints or
+These files are small and are included in this repository. They can also be
 regenerated with `utils/prompt_engineering.py`.
 
-| Target path in repo | Source file on local machine |
+| Target path in repo | Status |
 | --- | --- |
-| `text/voc_ViT16_clip_text.pth` | `text/voc_ViT16_clip_text.pth` |
-| `text/ade_ViT16_clip_text_local.pth` | `text/ade_ViT16_clip_text_local.pth` |
-| `text/city_ViT16_clip_text.pth` | `text/city_ViT16_clip_text.pth` |
+| `text/voc_ViT16_clip_text.pth` | included |
+| `text/ade_ViT16_clip_text.pth` | included |
+| `text/city_ViT16_clip_text.pth` | included |
 
 ## Do Not Upload
 
@@ -46,6 +49,6 @@ PGLP-Seg-Weights/
     city_pglp_seg.pth
   text/
     voc_ViT16_clip_text.pth
-    ade_ViT16_clip_text_local.pth
+    ade_ViT16_clip_text.pth
     city_ViT16_clip_text.pth
 ```

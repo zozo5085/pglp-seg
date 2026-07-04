@@ -8,14 +8,13 @@ Use this checklist before pushing to the public/anonymous repository.
 - `.gitignore`
 - `config/`
 - `model/pglp_seg.py`
-- `model/model_lrab_v1.py`
-- `model/gatedsap_v2.py` if required by ablation scripts
-- `tools/test_lrab_v1.py`
-- `tools/train_lrab_v1.py`
+- `model/model.py`
+- `tools/test.py`
+- `tools/train.py`
 - `tools/visualize_dataset_compare.py`
 - `tools/make_diagnostic_vis.py`
 - `utils/`
-- `text/*.json` pseudo-label files needed for training, if releasing training
+- `text/*_clip_text.pth`
 - `docs/WEIGHTS.md`
 - `docs/EXPERIMENTS.md`
 

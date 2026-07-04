@@ -10,7 +10,7 @@ DATASET:
     MEAN: [ 122.771, 116.746, 104.094 ]
     STD: [ 68.501, 66.632, 70.323 ]
     RGB: True
-  TEXT_WEIGHT: 'text/ade_ViT16_clip_text_local.pth'
+  TEXT_WEIGHT: 'text/ade_ViT16_clip_text.pth'
   K: 5
   THRESHOLD: 21
   REDUCE_ZERO_LABEL: TRUE

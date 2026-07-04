@@ -10,10 +10,10 @@ refinement module on top of a frozen CLIP-based dense prediction pipeline.
 ## What Is Included
 
 - `model/pglp_seg.py`: public PGLP-Seg model entrypoint.
-- `model/model_lrab_v1.py`: implementation module kept for checkpoint compatibility.
-- `tools/test_lrab_v1.py`: evaluation script with per-class/per-image metrics
+- `model/model.py`: implementation module.
+- `tools/test.py`: evaluation script with per-class/per-image metrics
   and optional diagnostic map export.
-- `tools/train_lrab_v1.py`: rectification-stage training script.
+- `tools/train.py`: rectification-stage training script.
 - `tools/visualize_dataset_compare.py`: qualitative comparison utility.
 - `tools/make_diagnostic_vis.py`: diagnostic module figure helper.
 - `config/*_ori_cfg.yaml`: dataset-specific experiment settings.
@@ -59,15 +59,20 @@ data/
 Large checkpoints are distributed separately. Download them from the project
 cloud link and place them under `weights/`.
 
-See `docs/WEIGHTS.md` for the exact file names and source files that should be
-uploaded.
+| Dataset | Download | Save as |
+| --- | --- | --- |
+| PASCAL VOC | [86.20 mIoU](https://drive.google.com/drive/folders/1ZKs5_LCFU_QBRXABJTm-MPOJOvIorqal) | `weights/voc_pglp_seg.pth` |
+| ADE20K | [18.02 mIoU](https://drive.google.com/drive/folders/1ZKs5_LCFU_QBRXABJTm-MPOJOvIorqal) | `weights/ade_pglp_seg.pth` |
+| Cityscapes | [40.44 mIoU](https://drive.google.com/drive/folders/1ZKs5_LCFU_QBRXABJTm-MPOJOvIorqal) | `weights/city_pglp_seg.pth` |
+
+Text embeddings are included under `text/`. See `docs/WEIGHTS.md` for details.
 
 ## Evaluation
 
 VOC:
 
 ```bash
-python tools/test_lrab_v1.py \
+python tools/test.py \
   --cfg config/voc_test_ori_cfg.yaml \
   --model PGLP_Seg \
   --model_module model.pglp_seg
@@ -76,7 +81,7 @@ python tools/test_lrab_v1.py \
 ADE20K:
 
 ```bash
-python tools/test_lrab_v1.py \
+python tools/test.py \
   --cfg config/ade_test_ori_cfg.yaml \
   --model PGLP_Seg \
   --model_module model.pglp_seg
@@ -85,7 +90,7 @@ python tools/test_lrab_v1.py \
 Cityscapes:
 
 ```bash
-python tools/test_lrab_v1.py \
+python tools/test.py \
   --cfg config/cityscapes_test_ori_cfg.yaml \
   --model PGLP_Seg \
   --model_module model.pglp_seg
