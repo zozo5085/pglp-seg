@@ -5,10 +5,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 from PIL import Image
 
-
-# Source summary has 9 columns:
-# 0 Image, 1 URD Score, 2 URD Mask, 3 CP Delta, 4 Before DTLR,
-# 5 DTLR Delta, 6 After DTLR, 7 Attr Mask, 8 After Attr.
 KEEP_COLS = [0, 1, 2, 3, 5, 8]
 TITLES = [
     "Input",
