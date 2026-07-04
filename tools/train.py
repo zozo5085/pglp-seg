@@ -70,11 +70,9 @@ def adjust_learning_rate_poly(optimizer, epoch, num_epochs, base_lr, power):
 
 
 def train(rank, world_size):
-    # dist.init_process_group("gloo", rank=rank, world_size=world_size)
-    # torch.cuda.set_device(rank)
+
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     clip_model, clip_preprocess = clip.load("ViT-B/16")
-    # clip_model = clip_model.to(rank)
     clip_model = clip_model.to(device)
     args = get_parser()
     cfg_file = args.cfg_file
@@ -90,8 +88,6 @@ def train(rank, world_size):
     
 
     model = PGLP_Seg(cfg=cfg, clip_model=clip_model, rank=device, zeroshot_weights=text_weight)
-    # model = torch.nn.parallel.DistributedDataParallel(model.cuda(), device_ids=[rank], output_device=rank,
-    #                                                       find_unused_parameters=True)
     model = model.to(device)
     raw_model = model.module if hasattr(model, "module") else model
 
@@ -147,7 +143,6 @@ def train(rank, world_size):
                     continue
             if len(gt_cls[0]) == 0:
                 continue
-            # output, loss = model(img.to(rank), gt_cls, text_weight, cls_name_token, training=True, img_metas=img_metas)
             output, loss = model(img.to(device), gt_cls, text_weight, cls_name_token, training=True, img_metas=img_metas)
             optimizer.zero_grad()
             loss.backward()
